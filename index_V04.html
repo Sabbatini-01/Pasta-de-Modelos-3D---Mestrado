@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biblioteca 3D - Minha Pesquisa Acadêmica</title>
+
+  <!--
+    Esta linha "importa" a biblioteca <model-viewer> da Google.
+    Ela é gratuita e é o que faz o modelo 3D aparecer, girar na tela,
+    e também é ela que permite ajustar luz e sombra.
+    Você não precisa mexer nesta linha.
+  -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+
+  <!--
+    Este bloco "importa" a biblioteca Three.js, usada só dentro do
+    Modo de Edição (mover peças com gizmo). É gratuita também.
+    Não precisa mexer.
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Montserrat, Montserrat, Montserrat;
+       background-color: #b397971a;
+      color: #000000;
+    }
+
+    header {
+      text-align: center;
+      padding: 24px 20px 8px;
+    }
+
+    header h1 { margin: 0 0 6px; color: #1a56db;}
+    header p { margin: 0; color: #555; max-width: 1100px; margin-inline: auto; }
+
+    /* Layout principal: biblioteca (lista) + visualizador lado a lado */
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      max-width: 1150px;
+      margin: 24px auto;
+      padding: 0 20px;
+      align-items: flex-start;
+    }
+
+    /* ===== Coluna da esquerda: a "biblioteca" ===== */
+    /* Coluna da esquerda inteira: biblioteca de modelos + galeria de imagens,
+       uma embaixo da outra */
+    .coluna-esquerda {
+      flex: 1 1 260px;
+      max-width: 800px;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    #biblioteca {
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      max-height: 45vh;
+      overflow-y: auto;
+    }
+
+    #biblioteca h2 {
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #777;
+      margin: 6px 8px 12px;
+    }
+
+    .item-modelo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      font-size: 15px;
+      font-family: Montserrat;
+      color: #222;
+    }
+
+    .item-modelo:hover { background: #f0f0f0; }
+
+    .item-modelo.ativo {
+      background: #e8f0fe;
+      color: #1a56db;
+      font-weight: bold;
+    }
+
+    /* A miniatura agora é uma imagem real, gerada automaticamente
+       a partir do próprio modelo 3D (veja o JS no fim do arquivo) */
+    .item-modelo .miniatura {
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      background: #d9d9d9;
+      background-size: cover;
+      background-position: center;
+      flex-shrink: 0;
+    }
+
+    /* Efeito de "carregando" enquanto a miniatura ainda não ficou pronta */
+    .item-modelo .miniatura.carregando {
+      background-image: none;
+      animation: pulsar 1.2s infinite ease-in-out;
+    }
+
+    @keyframes pulsar {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.9; }
+    }
+
+    /* ===== Galeria de imagens/desenhos (estilo "capturas de tela favoritas") ===== */
+    #galeria-imagens {
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    #galeria-imagens h2 {
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #777;
+      margin: 6px 8px 12px;
+    }
+
+    /* A imagem grande principal, com as setas e o botão de tela cheia por cima */
+
+    #slide-principal {
+      position: relative;
+      width: 100%; /* ocupa a largura disponível da coluna, se adaptando à janela */
+      aspect-ratio: 4 / 3; /* aspect ratio da imagem principal do lado */
+      background: #111;
+      border-radius: 15px;
+      overflow: hidden;
+    }
+
+    #slide-atual-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    #slide-atual-video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000;
+    }
+
+    .seta-slide {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .seta-slide:hover { background: rgba(0,0,0,0.8); }
+    .seta-slide.seta-esquerda { left: 8px; }
+    .seta-slide.seta-direita { right: 8px; }
+
+    #botao-slide-fullscreen {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      width: 30px;
+      height: 30px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 15px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #botao-slide-fullscreen:hover { background: rgba(0,0,0,0.8); }
+
+    #legenda-slide {
+      font-size: 12.5px;
+      color: #555;
+      margin: 8px 2px 0;
+      line-height: 1.35;
+      min-height: 1em; /* evita "pulo" de layout quando a legenda está vazia */
+      overflow-wrap: break-word; /* "quebra" legendas muito grandes */
+    }
+
+    /* Tira de miniaturas clicáveis, no estilo "capturas de tela favoritas" */
+    #tira-miniaturas {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    #tira-miniaturas .miniatura-slide {
+      flex-shrink: 0;
+      width: 56px;
+      height: 56px;
+      border-radius: 6px;
+      background-size: cover;
+      background-position: center;
+      background-color: #ddd;
+      cursor: pointer;
+      border: 2px solid transparent;
+      position: relative; /* necessário para o ícone de play das miniaturas de vídeo */
+    }
+
+    /* Como não dá pra gerar uma "capa" automática de um vídeo sem
+       processamento extra, mostramos um ícone de play por cima */
+    .miniatura-slide.miniatura-video {
+      background-color: #222;
+    }
+
+    .miniatura-slide.miniatura-video::after {
+      content: "▶";
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 16px;
+    }
+
+    #tira-miniaturas .miniatura-slide:hover { border-color: #aaa; }
+
+    #tira-miniaturas .miniatura-slide.ativa {
+      border-color: #1a56db;
+    }
+
+    #galeria-vazia {
+      display: none;
+      text-align: center;
+      color: #888;
+      font-size: 13px;
+      padding: 30px 10px;
+    }
+
+    /* Quando não há imagens, escondemos o slide e mostramos só a mensagem */
+    #galeria-imagens.sem-imagens #slide-principal,
+    #galeria-imagens.sem-imagens #tira-miniaturas {
+      display: none;
+    }
+
+    #galeria-imagens.sem-imagens #galeria-vazia {
+      display: block;
+    }
+
+    /* ===== Painel de tipo de junção (Tsugite / Shiguchi) ===== */
+    #tipo-juncao-painel {
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    #tipo-juncao-painel h2 {
+      font-size: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #777;
+      margin: 6px 8px 12px;
+    }
+
+    #tipo-juncao-selo {
+      display: inline-block;
+      margin: 0 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    /* Cor do selo muda de acordo com o tipo de junção deste modelo */
+    #tipo-juncao-selo.tipo-tsugite {
+      background: #e0edff;
+      color: #1a56db;
+    }
+
+    #tipo-juncao-selo.tipo-shiguchi {
+      background: #ffead1;
+      color: #b45309;
+    }
+
+    /* Caso o modelo não tenha tipo definido */
+    #tipo-juncao-selo.tipo-nao-definido {
+      background: #eee;
+      color: #888;
+      font-weight: normal;
+    }
+
+    /* ===== Modal de tela cheia da galeria (estilo visualizador de capturas) ===== */
+    #fundo-modal-galeria {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 1200;
+      flex-direction: column;
+    }
+
+    #fundo-modal-galeria.aberto { display: flex; }
+
+    #galeria-fullscreen-topo {
+      display: flex;
+      justify-content: flex-end;
+      padding: 12px 16px;
+    }
+
+    #fechar-galeria-fullscreen {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    #fechar-galeria-fullscreen:hover { background: rgba(255,255,255,0.3); }
+
+    #galeria-fullscreen-imagem-area {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 60px;
+      min-height: 0;
+    }
+
+    #slide-fullscreen-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    #slide-fullscreen-video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 4px;
+    }
+
+    #galeria-fullscreen-imagem-area .seta-slide {
+      width: 44px;
+      height: 44px;
+      font-size: 24px;
+    }
+
+    #legenda-slide-fullscreen {
+      text-align: center;
+      color: #eee;
+      font-size: 14px;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 20px;
+      min-height: 1.2em;
+    }
+
+    #tira-miniaturas-fullscreen {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      padding: 14px 20px 20px;
+    }
+
+    #tira-miniaturas-fullscreen .miniatura-slide {
+      flex-shrink: 0;
+      width: 70px;
+      height: 70px;
+      border-radius: 6px;
+      background-size: cover;
+      background-position: center;
+      background-color: #333;
+      cursor: pointer;
+      border: 2px solid transparent;
+      opacity: 0.6;
+    }
+
+    #tira-miniaturas-fullscreen .miniatura-slide:hover { opacity: 0.85; }
+
+    #tira-miniaturas-fullscreen .miniatura-slide.ativa {
+      border-color: #fff;
+      opacity: 1;
+    }
+
+    /* ===== Coluna da direita: visualizador ===== */
+    #visualizador-coluna {
+      flex: 2 1 420px;
+    }
+
+    /* Container do visualizador, usado para posicionar o botão de ajuda
+       flutuando por cima, no canto superior direito */
+    .area-principal-visualizador {
+      position: relative;
+    }
+
+    /* Botão flutuante "❔ Ajuda" por cima do visualizador */
+    #botao-ajuda {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 10;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: #1a56db;
+      color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #botao-ajuda:hover { background: #1745ad; }
+
+    /* ===== Pop-up (modal) de ajuda com o guia de controles ===== */
+    #fundo-modal-ajuda {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    #fundo-modal-ajuda.aberto {
+      display: flex;
+    }
+
+    #guia-controles {
+      background: #fff;
+      border-radius: 14px;
+      padding: 20px;
+      max-width: 320px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+      position: relative;
+    }
+
+    #guia-controles h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #777;
+    }
+
+    #fechar-guia-controles {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: none;
+      background: #eee;
+      cursor: pointer;
+      font-size: 15px;
+      font-family: Montserrat;
+      line-height: 1;
+    }
+
+    #fechar-guia-controles:hover { background: #ddd; }
+
+    #guia-controles svg { display: block; margin: 0 auto 10px; }
+
+    #guia-controles .legenda-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 13px;
+      color: #444;
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    #guia-controles .bolinha {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+
+    #guia-controles .subtitulo {
+      font-size: 12px;
+      font-weight: bold;
+      color: #666;
+      margin: 12px 0 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    #guia-controles .subtitulo:first-of-type { margin-top: 0; }
+
+    model-viewer {
+      width: 100%;
+      min-width: 0;
+      height: 50vh;
+      min-height: 340px;
+      background-color: #e8e8e8;
+      border-radius: 12px;
+    }
+
+    #descricao-modelo {
+      margin-top: 12px;
+      padding: 14px 16px;
+      background:#e8e8e8;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    #descricao-modelo h3 { margin: 0 0 6px; }
+    #descricao-modelo p { margin: 0; color: #555; }
+
+    /* ===== Painel de controles de luz/sombra/visualização ===== */
+    #painel-controles {
+      margin-top: 12px;
+      padding: 14px 16px 18px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    #painel-controles h3 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #777;
+    }
+
+    .campo-controle {
+      margin-bottom: 14px;
+    }
+
+    .campo-controle:last-child { margin-bottom: 0; }
+
+    .campo-controle label {
+      display: flex;
+      justify-content: left;
+      font-size: 14px;
+      font-family: Montserrat;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    .campo-controle label span.valor {
+      color: #888;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .campo-controle input[type="range"] {
+      width: 100%;
+    }
+
+    .campo-controle select {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+      font-family: Montserrat;
+    }
+
+    .linha-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-family: Montserrat;
+      color: #333;
+    }
+
+    #botao-resetar-camera {
+      margin-top: 4px;
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #f7f7f7;
+      cursor: pointer;
+      font-family: Montserrat;
+      font-size: 14px;
+    }
+
+    #botao-resetar-camera:hover { background: #efefef; }
+
+    #campo-variantes { display: none; } /* só aparece se o modelo tiver variantes */
+
+    #botao-abrir-editor {
+      margin-top: 10px;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      background: #1a56db;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: Montserrat;
+      font-weight: bold;
+    }
+
+    #botao-abrir-editor:hover { background: #1745ad; }
+
+    /* ===== Overlay do Modo de Edição (mover peças com gizmo) ===== */
+    #editor-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #1b1b1b;
+      z-index: 1000;
+      flex-direction: column;
+    }
+
+    #editor-overlay.aberto { display: flex; }
+
+    #editor-barra {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: #111;
+      color: #eee;
+    }
+
+    #editor-barra .titulo-editor {
+      font-weight: bold;
+      margin-right: auto;
+    }
+
+    #editor-barra button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #2a2a2a;
+      color: #eee;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: Montserrat;
+    }
+
+    #editor-barra button.modo-ativo {
+      background: #1a56db;
+      border-color: #1a56db;
+    }
+
+    #editor-barra button#botao-fechar-editor {
+      background: #b91c1c;
+      border-color: #b91c1c;
+    }
+
+    #editor-barra button#botao-salvar-editor {
+      background: #15803d;
+      border-color: #15803d;
+    }
+
+    #editor-barra button#botao-wireframe.modo-ativo {
+      background: #7c3aed;
+      border-color: #7c3aed;
+    }
+
+    #editor-instrucao {
+      color: #bbb;
+      font-size: 12px;
+      padding: 0 14px 8px;
+    }
+
+    #editor-canvas-wrap {
+      flex: 1;
+      position: relative;
+    }
+
+    #editor-canvas-wrap canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Biblioteca de Modelos 3D - Tsugite (つぎて) e Shiguchi (しくち)</h1>
+    <p>Peças modeladas durante a pesquisa de mestrado. Clique em um item da lista para carregá-lo. Arraste para girar, use o scroll (ou pince na tela) para dar zoom, e ajuste luz e sombra no painel abaixo do visualizador (Para importar um arquivo, salvar o mesmo em .glb ou .gltf).</p>
+  </header>
+
+  <div class="container">
+
+    <!-- ===== Coluna da esquerda: lista de modelos + galeria de imagens ===== -->
+    <div class="coluna-esquerda">
+      <nav id="biblioteca">
+        <h2>Modelos de Peças de Encaixe</h2>
+        <div id="lista-modelos"><!-- os botões são criados automaticamente pelo JS abaixo --></div>
+      </nav>
+
+      <!-- ===== Galeria de imagens/desenhos do modelo selecionado ===== -->
+      <div id="galeria-imagens">
+        <h2>Imagens e desenhos</h2>
+
+        <div id="slide-principal">
+          <img id="slide-atual-img" src="" alt="">
+          <video id="slide-atual-video" controls playsinline></video>
+          <button id="botao-slide-anterior" class="seta-slide seta-esquerda" type="button" title="Anterior">‹</button>
+          <button id="botao-slide-proximo" class="seta-slide seta-direita" type="button" title="Próxima">›</button>
+          <button id="botao-slide-fullscreen" type="button" title="Ver em tela cheia">⛶</button>
+        </div>
+
+        <p id="legenda-slide"></p>
+
+        <div id="tira-miniaturas"><!-- miniaturas clicáveis criadas pelo JS --></div>
+
+        <p id="galeria-vazia">Nenhuma imagem cadastrada para este modelo ainda.</p>
+      </div>
+
+      <!-- ===== Tipo de junção (Tsugite ou Shiguchi) do modelo selecionado ===== -->
+      <div id="tipo-juncao-painel">
+        <h2>Tipo de junção</h2>
+        <span id="tipo-juncao-selo"></span>
+      </div>
+    </div>
+
+    <!-- ===== Coluna da direita: visualizador ===== -->
+    <div id="visualizador-coluna">
+      <div class="area-principal-visualizador">
+        <model-viewer
+          id="viewer"
+          camera-controls
+          touch-action="pan-y"
+          auto-rotate
+          rotation-per-second="15deg"
+          shadow-intensity="1"
+          shadow-softness="1"
+          exposure="1"
+          environment-image="neutral"
+          ar
+        >
+        </model-viewer>
+
+        <!-- Botão flutuante que abre o guia de controles -->
+        <button id="botao-ajuda" type="button" title="Como usar os controles">❔</button>
+      </div>
+
+      <!-- ===== Pop-up (modal) com o guia visual de controles ===== -->
+      <div id="fundo-modal-ajuda">
+        <div id="guia-controles">
+          <button id="fechar-guia-controles" type="button" title="Fechar">✕</button>
+          <h3>Como controlar</h3>
+
+          <!-- Desenho simples de um mouse, com cada botão colorido de
+               acordo com a ação que ele faz (veja a legenda abaixo) -->
+          <svg width="100" height="130" viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg">
+            <!-- corpo do mouse -->
+            <path d="M20 55 C20 25 35 8 50 8 C65 8 80 25 80 55 L80 95 C80 115 65 125 50 125 C35 125 20 115 20 95 Z"
+                  fill="#f0f0f0" stroke="#999" stroke-width="2"/>
+            <!-- botão esquerdo --> /* azul escuro */
+            <path d="M20 55 C20 25 35 8 50 8 L50 55 Z" fill="#1a56db" opacity="0.85"/>
+            <!-- botão direito -->  /* azul claro */
+            <path d="M50 8 C65 8 80 25 80 55 L50 55 Z" fill="#39a2df" opacity="0.85"/>
+            <!-- divisória central --> /* amarelo */
+            <line x1="50" y1="8" x2="50" y2="55" stroke="#f5d91f" stroke-width="2"/>
+            <!-- scroll -->
+            <rect x="45" y="18" width="10" height="20" rx="5" fill="#f5d91f"/>
+          </svg>
+
+          <p class="subtitulo">Visualização normal</p>
+          <div class="legenda-item"><span class="bolinha" style="background:#1a56db"></span> Botão esquerdo + arrastar: gira o modelo</div>
+          <div class="legenda-item"><span class="bolinha" style="background:#39a2df"></span> Botão direito + arrastar: desloca a câmera (pan)</div>
+          <div class="legenda-item"><span class="bolinha" style="background:#f5d91f"></span> Rolar o scroll (ou pinçar na tela): zoom</div>
+
+          <p class="subtitulo">Modo de edição</p>
+          <div class="legenda-item"><span class="bolinha" style="background:#555"></span> Clique numa peça: seleciona</div>
+          <div class="legenda-item"><span class="bolinha" style="background:#e11d48"></span> Seta vermelha do gizmo: eixo X</div>
+          <div class="legenda-item"><span class="bolinha" style="background:#16a34a"></span> Seta verde do gizmo: eixo Y</div>
+          <div class="legenda-item"><span class="bolinha" style="background:#2563eb"></span> Seta azul do gizmo: eixo Z</div>
+          <div class="legenda-item"><span class="bolinha" style="background:#555"></span> Ctrl+Z (ou ⌘+Z): desfaz o último movimento</div>
+        </div>
+      </div>
+
+      <!-- ===== Modal de tela cheia da galeria de imagens ===== -->
+      <div id="fundo-modal-galeria">
+        <div id="galeria-fullscreen-topo">
+          <button id="fechar-galeria-fullscreen" type="button" title="Fechar">✕</button>
+        </div>
+        <div id="galeria-fullscreen-imagem-area">
+          <button id="botao-fullscreen-anterior" class="seta-slide seta-esquerda" type="button" title="Anterior">‹</button>
+          <img id="slide-fullscreen-img" src="" alt="">
+          <video id="slide-fullscreen-video" controls playsinline></video>
+          <button id="botao-fullscreen-proximo" class="seta-slide seta-direita" type="button" title="Próxima">›</button>
+        </div>
+        <p id="legenda-slide-fullscreen"></p>
+        <div id="tira-miniaturas-fullscreen"><!-- miniaturas clicáveis criadas pelo JS --></div>
+      </div>
+
+      <div id="descricao-modelo">
+        <h3 id="descricao-titulo"></h3>
+        <p id="descricao-texto"></p>
+      </div>
+
+      <!-- ===== Painel de ajustes de luz, sombra e visualização ===== -->
+      <div id="painel-controles">
+        <h3>Controle de luz, sombra e visualização </h3>
+
+        <div class="campo-controle">
+          <label for="controle-exposicao">Exposição (claridade geral): +<span class="valor" id="valor-exposicao"> 1.0</span></label>
+          <input type="range" id="controle-exposicao" min="0" max="2" step="0.05" value="1">
+        </div>
+
+        <div class="campo-controle">
+          <label for="controle-sombra-intensidade">Intensidade da sombra: +<span class="valor" id="valor-sombra-intensidade"> 1.0</span></label>
+          <input type="range" id="controle-sombra-intensidade" min="0" max="2" step="0.05" value="1">
+        </div>
+
+        <div class="campo-controle">
+          <label for="controle-sombra-suavidade">Suavidade da sombra: +<span class="valor" id="valor-sombra-suavidade"> 1.0</span></label>
+          <input type="range" id="controle-sombra-suavidade" min="0" max="1" step="0.05" value="1">
+        </div>
+
+        <div class="campo-controle">
+          <label for="controle-ambiente">Ambiente de iluminação</label>
+          <select id="controle-ambiente">
+            <option value="neutral">Neutro (padrão)</option>
+            <option value="legacy">Estúdio de fotos</option>
+          </select>
+        </div>
+
+        <div class="campo-controle">
+          <label class="linha-checkbox">
+            <input type="checkbox" id="controle-fundo">
+            Mostrar o ambiente como fundo (céu/estúdio visível)
+          </label>
+        </div>
+
+        <div class="campo-controle">
+          <label class="linha-checkbox">
+            <input type="checkbox" id="controle-auto-rotacao" checked>
+            Girar automaticamente
+          </label>
+        </div>
+
+        <div class="campo-controle" id="campo-variantes">
+          <label for="controle-variante">Variante de material</label>
+          <select id="controle-variante"></select>
+        </div>
+
+        <button id="botao-resetar-camera" type="button">Redefinir câmera</button>
+        <button id="botao-abrir-editor" type="button">🛠️ Editar peças (mover com gizmo)</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== Overlay do Modo de Edição ===== -->
+  <div id="editor-overlay">
+    <div id="editor-barra">
+      <span class="titulo-editor">Modo de edição — <span id="editor-nome-modelo"></span></span>
+      <button id="botao-modo-mover" type="button" class="modo-ativo">Mover</button>
+      <button id="botao-modo-girar" type="button">Girar</button>
+      <button id="botao-modo-escalar" type="button">Escalar</button>
+      <button id="botao-desselecionar" type="button">Desselecionar</button>
+      <button id="botao-desfazer" type="button">↶ Desfazer (Ctrl+Z)</button>
+      <button id="botao-wireframe" type="button">🕸️ Wireframe</button>
+      <button id="botao-salvar-editor" type="button">💾 Salvar como novo .glb</button>
+      <button id="botao-fechar-editor" type="button">Fechar sem salvar</button>
+    </div>
+    <p id="editor-instrucao">
+      Clique numa peça do modelo para selecioná-la e arraste as setas/anéis para movê-la, girá-la ou escaná-la.
+      Clique em uma área vazia para desselecionar. Use Ctrl+Z (ou o botão Desfazer) para reverter o último
+      movimento, e o botão Wireframe para ver só a malha do modelo. Quando terminar, clique em
+      "Salvar como novo .glb" para baixar um arquivo novo com as peças nas posições atuais — o arquivo
+      original não é alterado.
+    </p>
+    <div id="editor-canvas-wrap"></div>
+  </div>
+
+  <script>
+    /*
+      ======================================================
+      ATENÇÃO: É AQUI QUE VOCÊ CADASTRA SEUS MODELOS 3D
+      ======================================================
+      Cada modelo é um item entre chaves { }, separado por vírgula.
+      Copie e cole um bloco inteiro (de { até }) para adicionar um
+      novo modelo, e ajuste os campos:
+
+      - nome: o nome que aparece na lista da biblioteca
+      - arquivo: o nome exato do arquivo .glb/.gltf (deve estar na
+                 mesma pasta deste index.html, com o nome IDÊNTICO,
+                 incluindo maiúsculas/minúsculas)
+      - descricao: um texto curto que aparece embaixo do visualizador
+      - imagens: uma lista de fotos/desenhos/vídeos relacionados a este
+                 modelo. Cada item é um bloco { arquivo: "...", legenda: "..." }:
+                   - arquivo: nome exato do arquivo, que também deve estar
+                     na mesma pasta do index.html. Aceita imagens (.jpg,
+                     .png, .webp etc.) OU vídeos (.mp4, .webm, .mov, .ogg)
+                     — o site identifica automaticamente pelo tipo do
+                     arquivo e mostra o player de vídeo quando necessário
+                   - legenda: o texto que aparece como legenda quando essa
+                     imagem/vídeo é aberto na galeria (pode deixar "" se
+                     não quiser legenda nesse item específico)
+                 Se o modelo não tiver nenhuma imagem/vídeo ainda, deixe a
+                 lista vazia: imagens: []
+      - tipoJuncao: o tipo de junção de madeira usada no modelo. Use
+                    exatamente "Tsugite" ou "Shiguchi" (respeitando
+                    maiúsculas/minúsculas), ou "" se ainda não quiser
+                    classificar esse modelo.
+
+      Você NÃO precisa mais preencher nenhum ícone/imagem de miniatura: a
+      miniatura da lateral é gerada sozinha, tirando uma "foto" automática
+      do próprio modelo 3D assim que a página carrega.
+    */
+    const modelos = [
+      
+    {
+        nome: "01. Aritsugi - 腰掛蟻継",
+        arquivo: "Aritsugi.glb",
+        descricao: "Tipo de encaixe mais simples, em formado de 'cauda de andorinha' com poucos detalhes nos cortes da madeira. Em testes, aguentou até 480 kg (SUMIYOSHI, T. et al. 1991). Exemplo de Tsugite.",
+        imagens: [
+          { arquivo: "Aritsugi_01.jpg", legenda: "Foto de uma peça original. Disponível em: <https://i.ytimg.com/vi/CcGjICyy_po/maxresdefault.jpg>. Acesso em 21/08/2026."},
+          { arquivo: "Aritsugi_02.jpg", legenda: "Foto de uma peça original. Disponível em: <https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTijk-ZZ2t0Hlz2dW5ySUfcSBG44thYfHznfqEhNE_t2bInxX3RhInOubE&s=10>. Acesso em 21/08/2026." },
+          { arquivo: "Aritsugi_03.jpg", legenda: "Foto de uma peça original. Disponível em: <https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQntu8BG71y7L3aQbnQXrVBgbVd5ByznjXyroDhK49aI3IlFjONGKkXGTYp&s=10>. Acesso em 21/08/2026." },
+          { arquivo: "Video_Aritsugi.mp4", legenda: "Vídeo mostrando a montagem da peça. Disponível em: <https://www.youtube.com/watch?v=CcGjICyy_po>. Acesso em 24/08/2026." },
+        ],
+        tipoJuncao: "Tsugite (つぎて)" /*Shiguchi (しくち)*/
+      },
+ 
+      {
+              nome: "02. Kamatsugi - 腰掛鎌継",
+        arquivo: "Kamatsugi.glb",
+        descricao: "Peça japonesa de encaixe com formato em 'pescoço de ganso' (Stepped Gooseneck Splice). Aguenta até 2400kg de carga, muito mais resistente que sua semelhante mais simplificada, a Koshikake Aritsugi (cauda de andorinha) (SUMIYOSHI, T. et al. 1991). Exemplo de Tsugite. ",
+        imagens: [
+          { arquivo: "Kamatsugi_01.jpg", legenda: "Desenho feito a mão pelo autor. Fonte: Do Autor (Adaptado). Disponível em: <https://www.aisf.or.jp/~jaanus/deta/k/koshikakekamatsugi.htm>. Acesso em: 9 Jul. 2026." },
+          { arquivo: "Kamatsugi_02.jpg", legenda: "Foto de uma peça original. Disponível em: <https://kyotokenchiku.ac.jp/blog/kac-blog/5623/>. Acesso em 21/08/2026." },
+          { arquivo: "Kamatsugi_03.jpg", legenda: "Desenho esquemático em 3D da Koshikake Kamatsugi. Disponível em: <http://brandmakemiz.xsrv.jp/method/tekizami/>. Acesso em 21/08/2026." 
+ },
+ { arquivo: "Video_Kamatsugi.mp4", legenda: "Vídeo mostrando a montagem da peça. Disponível em: <https://www.youtube.com/watch?v=0ejXJSv7_rs>. Acesso em 24/08/2026." },
+        ],
+        tipoJuncao: "Tsugite (つぎて)"
+      },
+      {
+        nome: "03. Kirikumitsugi - 切組継",
+        arquivo: "Teste Peça_01.glb",
+        descricao: "Conta com diversos tipos diferentes dentro da mesma categoria, de travamento de peças com um pino (kumisen). A mais comum é denominada de Okkake Daisen Tsugi. Em testes, aguentou até 4000 kg (SUMIYOSHI, T. et al. 1991). Exemplo de Tsugite.",
+        imagens: [
+          { arquivo: "Kanawatsugi_01.jpg", legenda: "Desenho feito a mão pelo autor.  Fonte: Do Autor. Adaptado de CARDONA VELASQUEZ, J. F. Japanese Joinery Techniques Explained.  Academia.edu. p. 8-9. s.d."},
+          { arquivo: "Kanawatsugi_02.jpg", legenda: "Foto de uma peça original. Disponível em: <https://www.ecycle.com.br/kanawa-tsugi/>. Acesso em 21/08/2026." },
+          { arquivo: "Kanawatsugi_03.jpg", legenda: "Foto de uma peça original. Disponível em: <https://www.ecycle.com.br/kanawa-tsugi/>. Acesso em 21/08/2026." }
+        ],
+        tipoJuncao: "Tsugite (つぎて)"
+      },
+      
+      // Para adicionar um Modelo 3, copie um bloco { ... } acima,
+      // cole aqui embaixo e ajuste os valores. Não esqueça da vírgula
+      // separando cada bloco.
+    ];
+
+    // ---- A partir daqui é só lógica automática, não precisa mexer ----
+    const listaEl = document.getElementById("lista-modelos");
+    const viewerEl = document.getElementById("viewer");
+    const tituloEl = document.getElementById("descricao-titulo");
+    const textoEl = document.getElementById("descricao-texto");
+
+    const controleExposicao = document.getElementById("controle-exposicao");
+    const valorExposicao = document.getElementById("valor-exposicao");
+    const controleSombraIntensidade = document.getElementById("controle-sombra-intensidade");
+    const valorSombraIntensidade = document.getElementById("valor-sombra-intensidade");
+    const controleSombraSuavidade = document.getElementById("controle-sombra-suavidade");
+    const valorSombraSuavidade = document.getElementById("valor-sombra-suavidade");
+    const controleAmbiente = document.getElementById("controle-ambiente");
+    const controleFundo = document.getElementById("controle-fundo");
+    const controleAutoRotacao = document.getElementById("controle-auto-rotacao");
+    const campoVariantes = document.getElementById("campo-variantes");
+    const controleVariante = document.getElementById("controle-variante");
+    const botaoResetarCamera = document.getElementById("botao-resetar-camera");
+    const botaoAjuda = document.getElementById("botao-ajuda");
+    const fundoModalAjuda = document.getElementById("fundo-modal-ajuda");
+    const fecharGuiaControles = document.getElementById("fechar-guia-controles");
+
+    // ===== Pop-up de ajuda: abre e fecha o guia de controles =====
+    botaoAjuda.addEventListener("click", () => {
+      fundoModalAjuda.classList.add("aberto");
+    });
+
+    fecharGuiaControles.addEventListener("click", () => {
+      fundoModalAjuda.classList.remove("aberto");
+    });
+
+    // Clicar fora do cartão (no fundo escurecido) também fecha o pop-up
+    fundoModalAjuda.addEventListener("click", (evento) => {
+      if (evento.target === fundoModalAjuda) {
+        fundoModalAjuda.classList.remove("aberto");
+      }
+    });
+
+    // Tecla Esc também fecha o pop-up de ajuda
+    window.addEventListener("keydown", (evento) => {
+      if (evento.key === "Escape") {
+        fundoModalAjuda.classList.remove("aberto");
+      }
+    });
+
+    // Câmera "padrão" usada quando o usuário clica em Redefinir câmera
+    const CAMERA_PADRAO = "0deg 75deg 105%";
+
+    // ===== Galeria de imagens/desenhos (estilo "capturas de tela favoritas") =====
+    const galeriaImagensEl = document.getElementById("galeria-imagens");
+    const slideAtualImgEl = document.getElementById("slide-atual-img");
+    const slideAtualVideoEl = document.getElementById("slide-atual-video");
+    const legendaSlideEl = document.getElementById("legenda-slide");
+    const tiraMiniaturasEl = document.getElementById("tira-miniaturas");
+    const botaoSlideAnterior = document.getElementById("botao-slide-anterior");
+    const botaoSlideProximo = document.getElementById("botao-slide-proximo");
+    const botaoSlideFullscreen = document.getElementById("botao-slide-fullscreen");
+
+    const fundoModalGaleria = document.getElementById("fundo-modal-galeria");
+    const slideFullscreenImgEl = document.getElementById("slide-fullscreen-img");
+    const slideFullscreenVideoEl = document.getElementById("slide-fullscreen-video");
+    const legendaSlideFullscreenEl = document.getElementById("legenda-slide-fullscreen");
+    const tiraMiniaturasFullscreenEl = document.getElementById("tira-miniaturas-fullscreen");
+    const botaoFullscreenAnterior = document.getElementById("botao-fullscreen-anterior");
+    const botaoFullscreenProximo = document.getElementById("botao-fullscreen-proximo");
+    const fecharGaleriaFullscreen = document.getElementById("fechar-galeria-fullscreen");
+
+    // Extensões de arquivo reconhecidas como vídeo. Qualquer outra extensão
+    // (.jpg, .png, .webp etc.) é tratada como imagem normalmente.
+    const EXTENSOES_DE_VIDEO = ["mp4", "webm", "mov", "ogg"];
+
+    function arquivoEhVideo(nomeArquivo) {
+      const extensao = nomeArquivo.split(".").pop().toLowerCase();
+      return EXTENSOES_DE_VIDEO.includes(extensao);
+    }
+
+    let imagensDoModeloAtual = [];
+    let indiceSlideAtual = 0;
+
+    // Chamada sempre que o modelo selecionado muda, com a lista de imagens dele
+    function atualizarGaleria(listaImagens) {
+      imagensDoModeloAtual = listaImagens;
+      indiceSlideAtual = 0;
+
+      const temImagens = imagensDoModeloAtual.length > 0;
+      galeriaImagensEl.classList.toggle("sem-imagens", !temImagens);
+
+      // Monta a tira de miniaturas (tanto a pequena quanto a de tela cheia)
+      tiraMiniaturasEl.innerHTML = "";
+      tiraMiniaturasFullscreenEl.innerHTML = "";
+      imagensDoModeloAtual.forEach((imagem, indice) => {
+        const ehVideo = arquivoEhVideo(imagem.arquivo);
+        [tiraMiniaturasEl, tiraMiniaturasFullscreenEl].forEach((container) => {
+          const miniatura = document.createElement("div");
+          miniatura.className = ehVideo ? "miniatura-slide miniatura-video" : "miniatura-slide";
+          // Para vídeo não dá pra usar o arquivo como imagem de fundo, então
+          // deixamos só o ícone de play (definido via CSS); para foto/desenho,
+          // usamos o próprio arquivo como miniatura.
+          if (!ehVideo) miniatura.style.backgroundImage = `url(${imagem.arquivo})`;
+          miniatura.title = imagem.legenda || imagem.arquivo;
+          miniatura.addEventListener("click", () => irParaSlide(indice));
+          container.appendChild(miniatura);
+        });
+      });
+
+      renderizarSlideAtual();
+    }
+
+    function renderizarSlideAtual() {
+      if (imagensDoModeloAtual.length === 0) return;
+      const imagemAtual = imagensDoModeloAtual[indiceSlideAtual];
+      const ehVideo = arquivoEhVideo(imagemAtual.arquivo);
+
+      // Alterna entre mostrar a <img> ou o <video>, conforme o tipo do arquivo,
+      // tanto na área principal quanto na tela cheia
+      [
+        [slideAtualImgEl, slideAtualVideoEl],
+        [slideFullscreenImgEl, slideFullscreenVideoEl]
+      ].forEach(([elImagem, elVideo]) => {
+        if (ehVideo) {
+          elVideo.pause();
+          elVideo.src = imagemAtual.arquivo;
+          elImagem.style.display = "none";
+          elVideo.style.display = "block";
+        } else {
+          elVideo.pause();
+          elVideo.removeAttribute("src");
+          elImagem.src = imagemAtual.arquivo;
+          elImagem.alt = imagemAtual.legenda || "";
+          elImagem.style.display = "block";
+          elVideo.style.display = "none";
+        }
+      });
+
+      legendaSlideEl.textContent = imagemAtual.legenda || "";
+      legendaSlideFullscreenEl.textContent = imagemAtual.legenda || "";
+
+      // Marca a miniatura correspondente como "ativa" nas duas tiras
+      [tiraMiniaturasEl, tiraMiniaturasFullscreenEl].forEach((container) => {
+        container.querySelectorAll(".miniatura-slide").forEach((el, i) => {
+          el.classList.toggle("ativa", i === indiceSlideAtual);
+        });
+      });
+
+      // Só faz sentido navegar se houver mais de uma imagem
+      const temVariasImagens = imagensDoModeloAtual.length > 1;
+      [botaoSlideAnterior, botaoSlideProximo, botaoFullscreenAnterior, botaoFullscreenProximo].forEach((botao) => {
+        botao.style.display = temVariasImagens ? "flex" : "none";
+      });
+    }
+
+    function irParaSlide(indice) {
+      if (imagensDoModeloAtual.length === 0) return;
+      indiceSlideAtual = (indice + imagensDoModeloAtual.length) % imagensDoModeloAtual.length;
+      renderizarSlideAtual();
+    }
+
+    function slideAnterior() { irParaSlide(indiceSlideAtual - 1); }
+    function proximoSlide() { irParaSlide(indiceSlideAtual + 1); }
+
+    botaoSlideAnterior.addEventListener("click", slideAnterior);
+    botaoSlideProximo.addEventListener("click", proximoSlide);
+    botaoFullscreenAnterior.addEventListener("click", slideAnterior);
+    botaoFullscreenProximo.addEventListener("click", proximoSlide);
+
+    // Clicar na imagem grande também abre a tela cheia, além do botão ⛶
+    slideAtualImgEl.addEventListener("click", abrirGaleriaFullscreen);
+    botaoSlideFullscreen.addEventListener("click", abrirGaleriaFullscreen);
+
+    function abrirGaleriaFullscreen() {
+      if (imagensDoModeloAtual.length === 0) return;
+      fundoModalGaleria.classList.add("aberto");
+    }
+
+    function fecharTelaCheiaGaleria() {
+      fundoModalGaleria.classList.remove("aberto");
+      slideFullscreenVideoEl.pause();
+    }
+
+    fecharGaleriaFullscreen.addEventListener("click", fecharTelaCheiaGaleria);
+
+    // Clicar no fundo escurecido (fora da imagem/tira de miniaturas) também fecha
+    fundoModalGaleria.addEventListener("click", (evento) => {
+      if (evento.target === fundoModalGaleria) {
+        fecharTelaCheiaGaleria();
+      }
+    });
+
+    // Setas do teclado navegam entre as imagens, e Esc fecha a tela cheia
+    window.addEventListener("keydown", (evento) => {
+      if (!fundoModalGaleria.classList.contains("aberto")) return;
+      if (evento.key === "ArrowLeft") slideAnterior();
+      else if (evento.key === "ArrowRight") proximoSlide();
+      else if (evento.key === "Escape") fecharTelaCheiaGaleria();
+    });
+
+
+    // ===== Selo de tipo de junção (Tsugite / Shiguchi) =====
+    const tipoJuncaoSeloEl = document.getElementById("tipo-juncao-selo");
+
+    function atualizarTipoJuncao(tipoJuncao) {
+      tipoJuncaoSeloEl.classList.remove("tipo-tsugite", "tipo-shiguchi", "tipo-nao-definido");
+
+      if (tipoJuncao === "Tsugite (つぎて)") {
+        tipoJuncaoSeloEl.textContent = "Tsugite (つぎて)";
+        tipoJuncaoSeloEl.classList.add("tipo-tsugite");
+      } else if (tipoJuncao === "Shiguchi (しくち)") {
+        tipoJuncaoSeloEl.textContent = "Shiguchi (しくち)";
+        tipoJuncaoSeloEl.classList.add("tipo-shiguchi");
+      } else {
+        tipoJuncaoSeloEl.textContent = "Não definido";
+        tipoJuncaoSeloEl.classList.add("tipo-nao-definido");
+      }
+    }
+
+    function carregarModelo(indice) {
+      const modelo = modelos[indice];
+      viewerEl.setAttribute("src", modelo.arquivo);
+      viewerEl.setAttribute("alt", modelo.nome);
+      viewerEl.setAttribute("camera-orbit", CAMERA_PADRAO);
+      tituloEl.textContent = modelo.nome;
+      textoEl.textContent = modelo.descricao;
+
+      document.querySelectorAll(".item-modelo").forEach((btn, i) => {
+        btn.classList.toggle("ativo", i === indice);
+      });
+
+      // Esconde o seletor de variantes até sabermos se este modelo tem alguma
+      campoVariantes.style.display = "none";
+      controleVariante.innerHTML = "";
+
+      // Atualiza a galeria de imagens/desenhos para mostrar as fotos deste modelo
+      atualizarGaleria(modelo.imagens || []);
+
+      // Atualiza o selo de tipo de junção (Tsugite / Shiguchi)
+      atualizarTipoJuncao(modelo.tipoJuncao || "");
+    }
+
+    // Quando um novo modelo termina de carregar no visualizador principal,
+    // verificamos se ele tem "variantes de material" (recurso opcional do
+    // glTF) e, se tiver, mostramos o seletor correspondente.
+    viewerEl.addEventListener("load", () => {
+      const variantes = viewerEl.availableVariants || [];
+      if (variantes.length > 0) {
+        controleVariante.innerHTML = variantes
+          .map((v) => `<option value="${v}">${v}</option>`)
+          .join("");
+        campoVariantes.style.display = "block";
+      } else {
+        campoVariantes.style.display = "none";
+      }
+    });
+
+    // ===== Painel de controles: liga cada campo a um atributo do model-viewer =====
+    controleExposicao.addEventListener("input", () => {
+      viewerEl.exposure = controleExposicao.value;
+      valorExposicao.textContent = Number(controleExposicao.value).toFixed(2);
+    });
+
+    controleSombraIntensidade.addEventListener("input", () => {
+      viewerEl.setAttribute("shadow-intensity", controleSombraIntensidade.value);
+      valorSombraIntensidade.textContent = Number(controleSombraIntensidade.value).toFixed(2);
+    });
+
+    controleSombraSuavidade.addEventListener("input", () => {
+      viewerEl.setAttribute("shadow-softness", controleSombraSuavidade.value);
+      valorSombraSuavidade.textContent = Number(controleSombraSuavidade.value).toFixed(2);
+    });
+
+    controleAmbiente.addEventListener("change", () => {
+      viewerEl.setAttribute("environment-image", controleAmbiente.value);
+      // Se o fundo estiver ativado, atualiza o céu junto com o ambiente
+      if (controleFundo.checked) {
+        viewerEl.setAttribute("skybox-image", controleAmbiente.value);
+      }
+    });
+
+    controleFundo.addEventListener("change", () => {
+      if (controleFundo.checked) {
+        viewerEl.setAttribute("skybox-image", controleAmbiente.value);
+      } else {
+        viewerEl.removeAttribute("skybox-image");
+      }
+    });
+
+    controleAutoRotacao.addEventListener("change", () => {
+      viewerEl.toggleAttribute("auto-rotate", controleAutoRotacao.checked);
+    });
+
+    controleVariante.addEventListener("change", () => {
+      viewerEl.variantName = controleVariante.value;
+    });
+
+    botaoResetarCamera.addEventListener("click", () => {
+      viewerEl.setAttribute("camera-orbit", CAMERA_PADRAO);
+      viewerEl.jumpCameraToGoal();
+    });
+
+    // ===== Monta a lista da biblioteca, com miniaturas geradas automaticamente =====
+    modelos.forEach((modelo, indice) => {
+      const botao = document.createElement("button");
+      botao.className = "item-modelo";
+      botao.innerHTML = `<span class="miniatura carregando" id="miniatura-${indice}"></span><span>${modelo.nome}</span>`;
+      botao.addEventListener("click", () => carregarModelo(indice));
+      listaEl.appendChild(botao);
+    });
+
+    // Gera cada miniatura usando um <model-viewer> invisível: carregamos o
+    // modelo fora da tela, tiramos uma "foto" (toBlob) assim que ele estiver
+    // pronto, e usamos essa foto como imagem de fundo do botão na lista.
+    function gerarMiniatura(modelo, indice) {
+      const miniViewer = document.createElement("model-viewer");
+      miniViewer.setAttribute("src", modelo.arquivo);
+      miniViewer.setAttribute("environment-image", "neutral");
+      miniViewer.setAttribute("camera-orbit", CAMERA_PADRAO);
+      miniViewer.setAttribute("disable-zoom", "");
+      // Precisa ter um tamanho real na tela para renderizar, então
+      // posicionamos bem longe da área visível em vez de usar display:none.
+      miniViewer.style.position = "fixed";
+      miniViewer.style.left = "-9999px";
+      miniViewer.style.top = "0";
+      miniViewer.style.width = "256px";
+      miniViewer.style.height = "256px";
+      document.body.appendChild(miniViewer);
+
+      miniViewer.addEventListener("load", async () => {
+        try {
+          const blob = await miniViewer.toBlob({ mimeType: "image/png", idealAspect: true });
+          const url = URL.createObjectURL(blob);
+          const miniaturaEl = document.getElementById(`miniatura-${indice}`);
+          miniaturaEl.classList.remove("carregando");
+          miniaturaEl.style.backgroundImage = `url(${url})`;
+        } catch (erro) {
+          console.error("Não foi possível gerar a miniatura de", modelo.arquivo, erro);
+        } finally {
+          miniViewer.remove();
+        }
+      });
+
+      miniViewer.addEventListener("error", () => {
+        console.error("Erro ao carregar o modelo para gerar miniatura:", modelo.arquivo);
+        miniViewer.remove();
+      });
+    }
+
+    modelos.forEach((modelo, indice) => gerarMiniatura(modelo, indice));
+
+    // Guarda qual modelo está selecionado atualmente na biblioteca,
+    // para sabermos qual arquivo abrir quando o Modo de Edição for aberto.
+    // Usamos "window." aqui porque o Modo de Edição roda em um bloco de
+    // código separado (um "módulo"), que só consegue enxergar variáveis
+    // penduradas assim, e não variáveis comuns declaradas com let/const.
+    window.modelos = modelos;
+    window.indiceAtual = 0;
+    const carregarModeloOriginal = carregarModelo;
+    carregarModelo = function (indice) {
+      window.indiceAtual = indice;
+      carregarModeloOriginal(indice);
+    };
+
+    // Carrega o primeiro modelo da lista automaticamente ao abrir a página
+    if (modelos.length > 0) carregarModelo(0);
+  </script>
+
+  <!--
+    ======================================================
+    MODO DE EDIÇÃO (mover peças com gizmo) — usando Three.js
+    ======================================================
+    Este bloco é independente do visualizador principal. Ele só entra
+    em ação quando o usuário clica em "Editar peças". As posições
+    movidas aqui NÃO são salvas no arquivo — servem só para explorar
+    e explicar a montagem do modelo.
+  -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { TransformControls } from 'three/addons/controls/TransformControls.js';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+    const overlay = document.getElementById('editor-overlay');
+    const canvasWrap = document.getElementById('editor-canvas-wrap');
+    const nomeModeloEl = document.getElementById('editor-nome-modelo');
+    const botaoAbrirEditor = document.getElementById('botao-abrir-editor');
+    const botaoFecharEditor = document.getElementById('botao-fechar-editor');
+    const botaoModoMover = document.getElementById('botao-modo-mover');
+    const botaoModoGirar = document.getElementById('botao-modo-girar');
+    const botaoModoEscalar = document.getElementById('botao-modo-escalar');
+    const botaoDesselecionar = document.getElementById('botao-desselecionar');
+    const botaoSalvarEditor = document.getElementById('botao-salvar-editor');
+    const botaoDesfazer = document.getElementById('botao-desfazer');
+    const botaoWireframe = document.getElementById('botao-wireframe');
+
+    let renderer, scene, camera, orbitControls, transformControls;
+    let modeloCarregadoNaCena = null;
+    let nomeArquivoOriginalAtual = '';
+    let animando = false;
+    let idAnimacao = null;
+    let wireframeAtivo = false;
+
+    // Pilha de "estados anteriores" para o Ctrl+Z. Cada item guarda o
+    // objeto que foi movido e sua posição/rotação/escala ANTES do arraste.
+    const historicoDesfazer = [];
+    let estadoAntesDoArraste = null;
+
+    function iniciarCenaSeNecessario() {
+      if (renderer) return; // já existe, não recria
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1b1b1b);
+
+      camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
+      camera.position.set(2, 1.6, 3);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      canvasWrap.appendChild(renderer.domElement);
+
+      // Luz simples (ambiente + direcional), só para enxergar bem as peças
+      scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+      const luzDirecional = new THREE.DirectionalLight(0xffffff, 2);
+      luzDirecional.position.set(5, 10, 7);
+      luzDirecional.castShadow = true;
+      scene.add(luzDirecional);
+
+      orbitControls = new OrbitControls(camera, renderer.domElement);
+      orbitControls.enableDamping = true;
+
+      transformControls = new TransformControls(camera, renderer.domElement);
+      transformControls.addEventListener('dragging-changed', (evento) => {
+        // Evita que a câmera gire enquanto o usuário arrasta o gizmo
+        orbitControls.enabled = !evento.value;
+      });
+
+      // Guarda a posição/rotação/escala da peça ANTES de começar a arrastar
+      transformControls.addEventListener('mouseDown', () => {
+        const objeto = transformControls.object;
+        if (!objeto) return;
+        estadoAntesDoArraste = {
+          objeto,
+          posicao: objeto.position.clone(),
+          rotacao: objeto.quaternion.clone(),
+          escala: objeto.scale.clone()
+        };
+      });
+
+      // Ao soltar o arraste, empilha esse estado anterior no histórico
+      transformControls.addEventListener('mouseUp', () => {
+        if (estadoAntesDoArraste) {
+          historicoDesfazer.push(estadoAntesDoArraste);
+          estadoAntesDoArraste = null;
+        }
+      });
+
+      scene.add(transformControls.getHelper ? transformControls.getHelper() : transformControls);
+
+      // Clique numa peça para selecioná-la; clique vazio para soltar
+      const raycaster = new THREE.Raycaster();
+      const mouseNDC = new THREE.Vector2();
+
+      renderer.domElement.addEventListener('pointerdown', (evento) => {
+        if (transformControls.dragging) return;
+        const retangulo = renderer.domElement.getBoundingClientRect();
+        mouseNDC.x = ((evento.clientX - retangulo.left) / retangulo.width) * 2 - 1;
+        mouseNDC.y = -((evento.clientY - retangulo.top) / retangulo.height) * 2 + 1;
+        raycaster.setFromCamera(mouseNDC, camera);
+
+        if (!modeloCarregadoNaCena) return;
+        const intersecoes = raycaster.intersectObject(modeloCarregadoNaCena, true);
+        if (intersecoes.length > 0) {
+          transformControls.attach(intersecoes[0].object);
+        } else {
+          transformControls.detach();
+        }
+      });
+
+      window.addEventListener('resize', ajustarTamanhoCanvas);
+
+      function animar() {
+        idAnimacao = requestAnimationFrame(animar);
+        orbitControls.update();
+        renderer.render(scene, camera);
+      }
+      animar();
+    }
+
+    function ajustarTamanhoCanvas() {
+      if (!renderer || !overlay.classList.contains('aberto')) return;
+      const largura = canvasWrap.clientWidth;
+      const altura = canvasWrap.clientHeight;
+      renderer.setSize(largura, altura);
+      camera.aspect = largura / altura;
+      camera.updateProjectionMatrix();
+    }
+
+    function limparModeloDaCena() {
+      if (modeloCarregadoNaCena) {
+        transformControls.detach();
+        scene.remove(modeloCarregadoNaCena);
+        modeloCarregadoNaCena = null;
+      }
+    }
+
+    function carregarModeloNoEditor(caminhoArquivo, nomeModelo) {
+      limparModeloDaCena();
+      nomeModeloEl.textContent = nomeModelo;
+      nomeArquivoOriginalAtual = caminhoArquivo;
+      historicoDesfazer.length = 0; // começa o histórico de desfazer do zero para este modelo
+
+      const loader = new GLTFLoader();
+      loader.load(
+        caminhoArquivo,
+        (gltf) => {
+          modeloCarregadoNaCena = gltf.scene;
+          modeloCarregadoNaCena.traverse((objeto) => {
+            if (objeto.isMesh) {
+              objeto.castShadow = true;
+              objeto.receiveShadow = true;
+              // Aplica o estado de wireframe atual (caso o usuário já tenha ativado)
+              const materiais = Array.isArray(objeto.material) ? objeto.material : [objeto.material];
+              materiais.forEach((mat) => { if (mat) mat.wireframe = wireframeAtivo; });
+            }
+          });
+          scene.add(modeloCarregadoNaCena);
+
+          // Centraliza a câmera automaticamente com base no tamanho do modelo
+          const caixa = new THREE.Box3().setFromObject(modeloCarregadoNaCena);
+          const centro = caixa.getCenter(new THREE.Vector3());
+          const tamanho = caixa.getSize(new THREE.Vector3()).length() || 1;
+          camera.position.copy(centro).add(new THREE.Vector3(tamanho * 0.6, tamanho * 0.5, tamanho * 0.6));
+          orbitControls.target.copy(centro);
+          orbitControls.update();
+        },
+        undefined,
+        (erro) => {
+          console.error('Erro ao carregar modelo no editor:', erro);
+          alert('Não foi possível carregar este modelo no modo de edição.');
+        }
+      );
+    }
+
+    botaoAbrirEditor.addEventListener('click', () => {
+      const modelo = window.modelos[window.indiceAtual];
+      overlay.classList.add('aberto');
+      iniciarCenaSeNecessario();
+      // Espera o layout do overlay se estabelecer antes de medir o tamanho
+      requestAnimationFrame(() => {
+        ajustarTamanhoCanvas();
+        carregarModeloNoEditor(modelo.arquivo, modelo.nome);
+      });
+    });
+
+    botaoFecharEditor.addEventListener('click', () => {
+      overlay.classList.remove('aberto');
+      limparModeloDaCena(); // descarta qualquer posição alterada, por design
+      historicoDesfazer.length = 0;
+    });
+
+    botaoModoMover.addEventListener('click', () => definirModoGizmo('translate', botaoModoMover));
+    botaoModoGirar.addEventListener('click', () => definirModoGizmo('rotate', botaoModoGirar));
+    botaoModoEscalar.addEventListener('click', () => definirModoGizmo('scale', botaoModoEscalar));
+
+    function definirModoGizmo(modo, botaoClicado) {
+      transformControls.setMode(modo);
+      [botaoModoMover, botaoModoGirar, botaoModoEscalar].forEach((b) => b.classList.remove('modo-ativo'));
+      botaoClicado.classList.add('modo-ativo');
+    }
+
+    botaoDesselecionar.addEventListener('click', () => transformControls.detach());
+
+    // ===== Desfazer (Ctrl+Z) =====
+    function desfazerUltimaAcao() {
+      const ultimoEstado = historicoDesfazer.pop();
+      if (!ultimoEstado) return; // nada para desfazer
+      ultimoEstado.objeto.position.copy(ultimoEstado.posicao);
+      ultimoEstado.objeto.quaternion.copy(ultimoEstado.rotacao);
+      ultimoEstado.objeto.scale.copy(ultimoEstado.escala);
+    }
+
+    botaoDesfazer.addEventListener('click', desfazerUltimaAcao);
+
+    // Atalho de teclado Ctrl+Z (Windows/Linux) ou Cmd+Z (Mac), só quando
+    // o modo de edição estiver aberto — para não capturar o atalho do
+    // navegador (como desfazer texto digitado em outro lugar da página).
+    window.addEventListener('keydown', (evento) => {
+      if (!overlay.classList.contains('aberto')) return;
+      const teclaZ = evento.key === 'z' || evento.key === 'Z';
+      if ((evento.ctrlKey || evento.metaKey) && teclaZ) {
+        evento.preventDefault();
+        desfazerUltimaAcao();
+      }
+    });
+
+    // ===== Alternar visualização em Wireframe =====
+    botaoWireframe.addEventListener('click', () => {
+      wireframeAtivo = !wireframeAtivo;
+      botaoWireframe.classList.toggle('modo-ativo', wireframeAtivo);
+      if (!modeloCarregadoNaCena) return;
+      modeloCarregadoNaCena.traverse((objeto) => {
+        if (objeto.isMesh) {
+          const materiais = Array.isArray(objeto.material) ? objeto.material : [objeto.material];
+          materiais.forEach((mat) => { if (mat) mat.wireframe = wireframeAtivo; });
+        }
+      });
+    });
+
+    // ===== Salvar como novo arquivo .glb (com as peças nas posições atuais) =====
+    botaoSalvarEditor.addEventListener('click', () => {
+      if (!modeloCarregadoNaCena) {
+        alert('Nenhum modelo carregado para salvar.');
+        return;
+      }
+
+      // Solta qualquer peça selecionada antes de exportar, só por segurança
+      transformControls.detach();
+
+      const exportador = new GLTFExporter();
+      exportador.parse(
+        modeloCarregadoNaCena,
+        (resultado) => {
+          // "resultado" já vem em binário (ArrayBuffer) porque pedimos binary: true
+          const blob = new Blob([resultado], { type: 'model/gltf-binary' });
+          const url = URL.createObjectURL(blob);
+
+          // Sugere um nome de arquivo baseado no original, terminando em "-editado.glb"
+          const nomeBase = nomeArquivoOriginalAtual.replace(/\.(glb|gltf)$/i, '');
+          const nomeSugerido = `${nomeBase}-editado.glb`;
+
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = nomeSugerido;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+
+          alert(
+            `Arquivo "${nomeSugerido}" baixado!\n\n` +
+            `Para usar esse arquivo no site: envie-o para a mesma pasta do ` +
+            `GitHub (junto com os outros modelos) e, se quiser que ele apareça ` +
+            `na biblioteca, cadastre-o no bloco "const modelos" no início do código.`
+          );
+        },
+        (erro) => {
+          console.error('Erro ao exportar modelo:', erro);
+          alert('Não foi possível salvar o modelo. Veja o console do navegador para detalhes.');
+        },
+        { binary: true }
+      );
+    });
+  </script>
+
+</body>
+</html>
